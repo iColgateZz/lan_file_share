@@ -11,6 +11,10 @@
 #include <stdlib.h>
 #include <dirent.h>
 
+#define MAX_PATH_LEN 8000
+#define MAX_DIR_SIZE 1024
+#define ISDIR_INVALID -1
+
 string normalize_uri(string uri)
 {
     if (uri[0] == 0) {
@@ -69,11 +73,14 @@ char* getext(const char* str)
         return strrchr(lastSlash, '.');
 }
 
-#define ISDIR_INVALID -1
 int isdir(const char *path)
 {
+    char buf[MAX_PATH_LEN];
+    buf[MAX_PATH_LEN - 1] = 0;
+    snprintf(buf, MAX_PATH_LEN - 1, "./%s", path);
+
     struct stat statbuf;
-    if (stat(path, &statbuf) != 0)
+    if (stat(buf, &statbuf) != 0)
         return ISDIR_INVALID;
     return S_ISDIR(statbuf.st_mode);
 }
@@ -103,27 +110,44 @@ char* getconttype(const char* ext)
         return "text/plain";
     } else if (strcmp(ext, ".pdf") == 0) {
         return "application/pdf";
+    } else if (strcmp(ext, ".c") == 0) {
+        return "text/plain";
     }
     return "application/octet-stream";
 }
 
-#define MAX_PATH_LEN 8000
-void listdir(const char* path)
+string* listdir(const char* path, size_t* n)
 {
     struct dirent *de;
     char buf[MAX_PATH_LEN];
 
     buf[MAX_PATH_LEN - 1] = 0;
     snprintf(buf, MAX_PATH_LEN - 1, "./%s", path);
-    printf("The path is: %s\n", buf);
+
     DIR *dr = opendir(buf);
-    if (dr == NULL) {
-        printf("Could not open current directory" ); 
-        return; 
+    if (!dr) return NULL; 
+
+    string* arr = malloc(MAX_DIR_SIZE * sizeof(string));
+    if (!arr) return NULL;
+
+    size_t idx = 0;
+    while ((de = readdir(dr)) && idx < MAX_DIR_SIZE)
+    {
+        if (de->d_type == DT_DIR || de->d_type == DT_REG) {
+            arr[idx] = snew(de->d_name);
+            if (!arr[idx]) goto cleanup;
+            idx++;
+        }
     }
-    while ((de = readdir(dr)) != NULL)
-        printf("%d, %s\n", de->d_type, de->d_name);
     closedir(dr);
+    *n = idx;
+    return arr;
+
+cleanup:
+    for (size_t i = 0; i < idx; i++)
+        sfree(arr[i]);
+    free(arr);
+    return NULL;
 }
 
 #endif

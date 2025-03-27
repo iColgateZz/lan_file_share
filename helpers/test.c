@@ -96,7 +96,8 @@ int main(void) {
     // printf("%s\n", normalize_uri(uri8));
 
     char* path = "";
-    listdir(path);
+    size_t n;
+    listdir(path, &n);
 
     return 0;
 }

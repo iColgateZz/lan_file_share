@@ -268,7 +268,7 @@ void send_file(int c, struct Request* request)
     size_t bytes_read;
     string file_name = request->uri;
 
-    sprintf(buf,
+    snprintf(buf, CHUNK_SIZE,
     "HTTP/1.1 200 OK\r\n"
     "Server: httpd\r\n"
     "Content-type: %s\r\n"
@@ -305,18 +305,74 @@ void send_file(int c, struct Request* request)
     return;
 
 cleanup:
-    SET_STATUS(request, INTERNAL_SERVER_ERROR, "Error writing the chunk data\n");
+    SET_STATUS(request, INTERNAL_SERVER_ERROR, "Error writing chunk data\n");
     fclose(file);
 }
 
 void send_template(int c, struct Request* request)
 {
-    /*
-        Open template file.
-        Change #TITLE to 'Listing of PATH'.
-        Change #LISTING to <li><a href="/{file_or_dir_name}">file_or_dir_name</a></li>
-        Write the updated temlate to the fd.
-    */
+    FILE* file = fopen("static/template.html", "rb");
+    if (!file) {
+        SET_STATUS(request, INTERNAL_SERVER_ERROR, "Can't open template file\n");
+        return;
+    }
+    
+    size_t bytes_read;
+    char buffer[CHUNK_SIZE];
+    char chunk_header[8];
+    string template = snew("");
+    while ((bytes_read = fread(buffer, 1, CHUNK_SIZE, file)) > 0)
+    {
+        string buf = snewlen(buffer, bytes_read);
+        string tmp = template;
+        template = scats(template, buf);
+        sfree(buf); sfree(tmp);
+    }
+    
+    size_t n;
+    string* arr = ssplit(template, 6, "#TITLE", &n);
+    string listing = snew("Listing of /");
+    string title = scats(listing, request->uri);
+    string with_title = sjoins(n, arr, sgetlen(title), title);
+    sfreearr(arr, n); sfree(listing); sfree(title);
+
+    arr = ssplit(with_title, 8, "#LISTING", &n);
+    sfree(with_title);
+
+    string li = snew("<li><a href=\"/PATH\">PATH</a></li>\n");
+    string* li_arr = ssplit(li, 4, "PATH", &n);
+    string* dir_file = listdir(request->uri, &n);
+
+    string links = snew("");
+    for (size_t i = 0; i < n; i++) {
+        string link = sjoins(3, li_arr, sgetlen(dir_file[i]), dir_file[i]);
+        string tmp = links;
+        links = scats(links, link);
+        sfree(link); sfree(tmp);
+    }
+    string to_return = sjoins(2, arr, sgetlen(links), links);
+    sfree(li); sfreearr(li_arr, 3); sfreearr(dir_file, n); sfree(links);
+    
+    snprintf(buffer, CHUNK_SIZE,
+    "HTTP/1.1 200 OK\r\n"
+    "Server: httpd\r\n"
+    "Content-type: text/html\r\n"
+    "Transfer-Encoding: chunked\r\n"
+    "Connection: keep-alive\r\n"
+    "\r\n");
+    write(c, buffer, strlen(buffer));
+    size_t len = sgetlen(to_return);
+    n = 0;
+    while (n < len)
+    {
+        bytes_read = len - n >= CHUNK_SIZE ? CHUNK_SIZE : len;
+        snprintf(chunk_header, sizeof(chunk_header), "%zx\r\n", bytes_read);
+        write(c, chunk_header, strlen(chunk_header));
+        write(c, to_return + n, bytes_read);
+        write(c, "\r\n", 2);
+        n += len;
+    }
+    write(c, "0\r\n\r\n", 5);
 }
 
 void check_uri(struct Request* request)
@@ -333,19 +389,18 @@ bool respond(int c, struct Request* request)
 {
     if (request->status_code == NOTHING_TO_READ)
         return false;
-
+    
     request->uri = normalize_uri(request->uri);
     check_uri(request);
 
-    if (request->valid) {
+    if (!request->valid)
+        send_simple_response(c, request->status_code, "", "text/plain", "close", "");
+    else {
         if (isdir(request->uri))
             send_template(c, request);
         else
             send_file(c, request);
     }
-    // send_file or send_template might fail
-    if (!request->valid)
-        send_simple_response(c, request->status_code, "", "text/plain", "close", "");
     return request->valid;
 }
 
@@ -370,9 +425,7 @@ void handle_client(const int c)
         log_err(stderr, error_desc);
         if (request.status_code != NOTHING_TO_READ) {
             ht_clear(headers);
-            sfree(request.method);
-            sfree(request.uri);
-            sfree(request.version);
+            sfree(request.method); sfree(request.uri); sfree(request.version);
         }
     }
 
