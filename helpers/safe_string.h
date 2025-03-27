@@ -44,7 +44,7 @@ string snew(const void* input);
 string snewlen(const void* input, size_t ilen);
 void sfree(const string s);
 size_t sgetlen(const string s);
-void supdatelen(const string s);
+void supdatelen(const string s, size_t len);
 string sdup(const string s);
 string sjoin(size_t n, const char* s[n], size_t plen, const char* pattern);
 string sjoins(size_t n, const string s[n], size_t plen, const char* pattern);

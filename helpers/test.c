@@ -27,41 +27,41 @@ int main(void) {
     // }
     // printf("\n\n\n");
 
-    char* str = "";
-    printf("'%s' isDir: %d\n", str, isdir(str));
+    // char* str = "";
+    // printf("'%s' isDir: %d\n", str, isdir(str));
 
-    str = ".";
-    printf("'%s' isDir: %d\n", str, isdir(str));
+    // str = ".";
+    // printf("'%s' isDir: %d\n", str, isdir(str));
 
-    str = "..";
-    printf("'%s' isDir: %d\n", str, isdir(str));
+    // str = "..";
+    // printf("'%s' isDir: %d\n", str, isdir(str));
 
-    str = "/";
-    printf("'%s' isDir: %d\n", str, isdir(str));
+    // str = "/";
+    // printf("'%s' isDir: %d\n", str, isdir(str));
 
-    str = "/tmp";
-    printf("'%s' isDir: %d\n", str, isdir(str));
+    // str = "/tmp";
+    // printf("'%s' isDir: %d\n", str, isdir(str));
 
-    str = "test";
-    printf("'%s' isDir: %d\n", str, isdir(str));
+    // str = "test";
+    // printf("'%s' isDir: %d\n", str, isdir(str));
 
-    str = "stringlib.c";
-    printf("'%s' isDir: %d\n", str, isdir(str));
+    // str = "stringlib.c";
+    // printf("'%s' isDir: %d\n", str, isdir(str));
 
-    str = "not_real";
-    printf("'%s' isDir: %d\n", str, isdir(str));
+    // str = "not_real";
+    // printf("'%s' isDir: %d\n", str, isdir(str));
 
-    str = "static";
-    printf("'%s' isDir: %d\n", str, isdir(str));
+    // str = "static";
+    // printf("'%s' isDir: %d\n", str, isdir(str));
 
-    str = "static/";
-    printf("'%s' isDir: %d\n", str, isdir(str));
+    // str = "static/";
+    // printf("'%s' isDir: %d\n", str, isdir(str));
 
-    str = "/static";
-    printf("'%s' isDir: %d\n", str, isdir(str));
+    // str = "/static";
+    // printf("'%s' isDir: %d\n", str, isdir(str));
 
-    str = "/static/";
-    printf("'%s' isDir: %d\n", str, isdir(str));
+    // str = "/static/";
+    // printf("'%s' isDir: %d\n", str, isdir(str));
 
     // string uri1 = snew("/simple");
     // printf("%s\n", uri1);
@@ -94,6 +94,9 @@ int main(void) {
     // string uri8 = snew("../../../../LOL");
     // printf("%s\n", uri8);
     // printf("%s\n", normalize_uri(uri8));
+
+    char* path = "";
+    listdir(path);
 
     return 0;
 }

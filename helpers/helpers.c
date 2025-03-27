@@ -9,8 +9,10 @@
 #include <sys/stat.h>
 #include "safe_string.h"
 #include <stdlib.h>
+#include <dirent.h>
 
-string normalize_uri(string uri) {
+string normalize_uri(string uri)
+{
     if (uri[0] == 0) {
         sfree(uri);
         return NULL;
@@ -53,14 +55,13 @@ string normalize_uri(string uri) {
         }
     }
     string new_uri = sjoins(out_size, out, 1, "/");
-    sfreearr(in, n);
-    free(out);
-    sfree(uri);
+    sfreearr(in, n); free(out); sfree(uri);
     sltrimchar(new_uri, 1, "/");
     return new_uri;
 }
 
-char* getext(const char* str) {
+char* getext(const char* str)
+{
     char* lastSlash = strrchr(str, '/');
     if (lastSlash == NULL)
         return strrchr(str, '.');
@@ -69,14 +70,16 @@ char* getext(const char* str) {
 }
 
 #define ISDIR_INVALID -1
-int isdir(const char *path) {
+int isdir(const char *path)
+{
     struct stat statbuf;
     if (stat(path, &statbuf) != 0)
         return ISDIR_INVALID;
     return S_ISDIR(statbuf.st_mode);
 }
 
-char* getcontype(const char* ext) {
+char* getconttype(const char* ext)
+{
     if (!ext) {
         return "application/octet-stream";
     }
@@ -103,4 +106,24 @@ char* getcontype(const char* ext) {
     }
     return "application/octet-stream";
 }
+
+#define MAX_PATH_LEN 8000
+void listdir(const char* path)
+{
+    struct dirent *de;
+    char buf[MAX_PATH_LEN];
+
+    buf[MAX_PATH_LEN - 1] = 0;
+    snprintf(buf, MAX_PATH_LEN - 1, "./%s", path);
+    printf("The path is: %s\n", buf);
+    DIR *dr = opendir(buf);
+    if (dr == NULL) {
+        printf("Could not open current directory" ); 
+        return; 
+    }
+    while ((de = readdir(dr)) != NULL)
+        printf("%d, %s\n", de->d_type, de->d_name);
+    closedir(dr);
+}
+
 #endif

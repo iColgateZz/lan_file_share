@@ -23,7 +23,7 @@
 /* Custom libraries */
 #include "logger/logger.c"
 #include "helpers/helpers.c"
-#include "helpers/safe_string.c"
+#include "helpers/safe_string.h"
 #include "htable/htable.c"
 
 /* Definitions */
@@ -142,7 +142,7 @@ void read_request(const int c, struct Request* request, string buffer)
     if (ret > 0 && FD_ISSET(c, &rfds)) {
         memset(buffer, 0, MAX_REQUEST_SIZE);
         len = read(c, buffer, MAX_REQUEST_SIZE);
-        ssetlen(buffer, (size_t) len);
+        supdatelen(buffer, (size_t) len);
     }
 
     if (len <= 0)
@@ -261,24 +261,20 @@ void send_simple_response(int c, size_t code, char* msg,
     write(c, buf, strlen(buf));
 }
 
-void send_file(int c, struct Request* request, const char* file_name)
+void send_file(int c, struct Request* request)
 {
-    if (!request->valid)
-        return;
-    
     char buf[CHUNK_SIZE];
-    char chunk_header[20];
+    char chunk_header[8];
     size_t bytes_read;
+    string file_name = request->uri;
 
-    memset(buf, 0, CHUNK_SIZE);
-
-    sprintf(buf, 
+    sprintf(buf,
     "HTTP/1.1 200 OK\r\n"
     "Server: httpd\r\n"
     "Content-type: %s\r\n"
     "Transfer-Encoding: chunked\r\n"
     "Connection: keep-alive\r\n"
-    "\r\n", getcontype(getext(file_name)));
+    "\r\n", getconttype(getext(file_name)));
 
     if (write(c, buf, strlen(buf)) < 0) {
         SET_STATUS(request, INTERNAL_SERVER_ERROR, "Error sending headers\n");
@@ -290,37 +286,44 @@ void send_file(int c, struct Request* request, const char* file_name)
         SET_STATUS(request, INTERNAL_SERVER_ERROR, "Can't open file\n");
         return;
     }
-    while ((bytes_read = fread(buf, 1, MAX_REQUEST_SIZE, file)) > 0)
+
+    while ((bytes_read = fread(buf, 1, CHUNK_SIZE, file)) > 0)
     {
         snprintf(chunk_header, sizeof(chunk_header), "%zx\r\n", bytes_read);
-        if (write(c, chunk_header, strlen(chunk_header)) < 0) {
-            SET_STATUS(request, INTERNAL_SERVER_ERROR, "Error writing the chunk headers\n");
-            fclose(file);
-            return;
-        }
+        if (write(c, chunk_header, strlen(chunk_header)) < 0)
+            goto cleanup;
 
-        if (write(c, buf, bytes_read) < 0) {
-            SET_STATUS(request, INTERNAL_SERVER_ERROR, "Error writing the chunk data\n");
-            fclose(file);
-            return;
-        }
+        if (write(c, buf, bytes_read) < 0)
+            goto cleanup;
 
-        if (write(c, "\r\n", 2) < 0) {
-            SET_STATUS(request, INTERNAL_SERVER_ERROR, "Error writing the chunk trailer\n");
-            fclose(file);
-            return;
-        }
+        if (write(c, "\r\n", 2) < 0)
+            goto cleanup;
     }
     fclose(file);
-    if (write(c, "0\r\n\r\n", 5) < 0) {
+    if (write(c, "0\r\n\r\n", 5) < 0)
         SET_STATUS(request, INTERNAL_SERVER_ERROR, "Error writing the final chunk\n");
-        return;
-    }
+    return;
+
+cleanup:
+    SET_STATUS(request, INTERNAL_SERVER_ERROR, "Error writing the chunk data\n");
+    fclose(file);
+}
+
+void send_template(int c, struct Request* request)
+{
+    /*
+        Open template file.
+        Change #TITLE to 'Listing of PATH'.
+        Change #LISTING to <li><a href="/{file_or_dir_name}">file_or_dir_name</a></li>
+        Write the updated temlate to the fd.
+    */
 }
 
 void check_uri(struct Request* request)
 {
-    if (!request->uri)
+    if (!request->valid)
+        return;
+    else if (!request->uri)
         SET_STATUS(request, INTERNAL_SERVER_ERROR, "uri is NULL\n");
     else if (isdir(request->uri) == ISDIR_INVALID)
         SET_STATUS(request, NOT_FOUND, "Resource not found\n");
@@ -330,14 +333,17 @@ bool respond(int c, struct Request* request)
 {
     if (request->status_code == NOTHING_TO_READ)
         return false;
+
     request->uri = normalize_uri(request->uri);
     check_uri(request);
+
     if (request->valid) {
         if (isdir(request->uri))
-            send_file(c, request, request->uri);
+            send_template(c, request);
         else
-            send_file(c, request, request->uri);
+            send_file(c, request);
     }
+    // send_file or send_template might fail
     if (!request->valid)
         send_simple_response(c, request->status_code, "", "text/plain", "close", "");
     return request->valid;
