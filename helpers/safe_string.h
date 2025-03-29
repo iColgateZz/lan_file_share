@@ -65,5 +65,6 @@ ssize_t sfind_advanced(string s, size_t plen, const char* pattern);
 string* ssplit(const string s, size_t seplen, const char* sep, size_t* n);
 void sfreearr(string* arr, size_t n);
 bool sltrimchar(string s, size_t c_size, char* c_arr);
+string sreplace(const string s, size_t olen, const char* old, size_t nlen, const char* new);
 
 #endif 

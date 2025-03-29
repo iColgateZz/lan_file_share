@@ -814,4 +814,13 @@ bool sltrimchar(string s, size_t c_size, char* c_arr) {
     return true;
 }
 
+string sreplace(const string s, size_t olen, const char* old, size_t nlen, const char* new) {
+    size_t n;
+    string* split = ssplit(s, olen, old, &n);
+    if (!split) return NULL;
+    string res = sjoins(n, split, nlen, new);
+    sfreearr(split, n);
+    return res;
+}
+
 #endif

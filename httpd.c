@@ -330,28 +330,27 @@ void send_template(int c, struct Request* request)
     }
     
     size_t n;
-    string* arr = ssplit(template, 6, "#TITLE", &n);
     string listing = snew("Listing of /");
     string title = scats(listing, request->uri);
-    string with_title = sjoins(n, arr, sgetlen(title), title);
-    sfreearr(arr, n); sfree(listing); sfree(title);
-
-    arr = ssplit(with_title, 8, "#LISTING", &n);
-    sfree(with_title);
+    string with_title = sreplace(template, 6, "#TITLE", sgetlen(title), title);
+    sfree(listing); sfree(title);
 
     string li = snew("<li><a href=\"/PATH\">PATH</a></li>\n");
-    string* li_arr = ssplit(li, 4, "PATH", &n);
     string* dir_file = listdir(request->uri, &n);
+    string slash = snew("/");
 
     string links = snew("");
     for (size_t i = 0; i < n; i++) {
-        string link = sjoins(3, li_arr, sgetlen(dir_file[i]), dir_file[i]);
+        string first_link = scats(request->uri, slash);
+        string full_link = scats(first_link, dir_file[i]);
+        string new_full_path = sreplace(li, 5, "/PATH", sgetlen(full_link), full_link);
+        string link = sreplace(new_full_path, 4, "PATH", sgetlen(dir_file[i]), dir_file[i]);
         string tmp = links;
         links = scats(links, link);
-        sfree(link); sfree(tmp);
+        sfree(first_link); sfree(full_link); sfree(new_full_path); sfree(link); sfree(tmp);
     }
-    string to_return = sjoins(2, arr, sgetlen(links), links);
-    sfree(li); sfreearr(li_arr, 3); sfreearr(dir_file, n); sfree(links);
+    string to_return = sreplace(with_title, 8, "#LISTING", sgetlen(links), links);
+    sfree(li); sfree(slash); sfreearr(dir_file, n); sfree(links); sfree(with_title);
     
     snprintf(buffer, CHUNK_SIZE,
     "HTTP/1.1 200 OK\r\n"
