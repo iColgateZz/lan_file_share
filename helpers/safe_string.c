@@ -1,8 +1,5 @@
 /* safe_string.c */
 
-#ifndef SAFE_STRING_C
-#define SAFE_STRING_C
-
 /* Include libs */
 #include <limits.h>
 #include <string.h>
@@ -126,6 +123,39 @@ void ssetalloc(const string s, const size_t newalloc) {
     return;
 }
 
+static inline
+string smakeroom(string s, size_t addroom) {
+    void* h, *new_h;
+    size_t oldlen, newlen, avail, new_hlen;
+    uint8_t old_type, new_type;
+
+    oldlen = sgetlen(s);
+    avail = sgetalloc(s) - oldlen;
+    if (avail >= addroom) return s;
+
+    old_type = s[-1];
+    h = s - getHlen(old_type);
+    newlen = oldlen + addroom;
+    new_type = getReqType(newlen);
+    new_hlen = getHlen(new_type);
+
+    if (new_type == old_type) {
+        new_h = realloc(h, new_hlen + newlen + 1);
+        if (!new_h) return NULL;
+        s = (string)((uint8_t*)new_h + new_hlen);
+    } else {
+        new_h = malloc(new_hlen + newlen + 1);
+        if (new_h == NULL) return NULL;
+        memcpy((char*)new_h + new_hlen, s, oldlen + 1);
+        free(h);
+        s = (string)((uint8_t*)new_h + new_hlen);
+        s[-1] = (char)new_type;
+        ssetlen(s, oldlen);
+    }
+    ssetalloc(s, newlen);
+    return s;
+}
+
 /*
     Create a new null-terminated string with length ilen.
 
@@ -243,7 +273,7 @@ size_t sgetlen(const string s) {
 }
 
 /*
-    Update the lenght of a string directly in case you changed it manually.
+    Update the lenght of a string in case you changed it manually.
 
     If NULL is passed as an argument, nothing is done.
 */
@@ -280,7 +310,7 @@ string sdup(const string s) {
     This function is not binary safe.
 */
 string sjoin(size_t n, const char* str[n], size_t seplen, const char* sep) {
-    if (n < 2) return NULL;
+    if (n < 1) return NULL;
     if (sep == NULL) return NULL;
     size_t curlen = 0;
     for (size_t i = 0; i < n; i++) {
@@ -319,7 +349,7 @@ string sjoin(size_t n, const char* str[n], size_t seplen, const char* sep) {
     Return NULL if malloc fails.
     Return NULL if one of the given strings is NULL.
     Return NULL if sep is NULL.
-    Return NULL if n < 1.
+    Return NULL if n < 2.
     Return a new string in which the given ones are joined together.
 
     Separator must be null-terminated.
@@ -369,7 +399,7 @@ string sjoins(size_t n, const string str[n], size_t seplen, const char* sep) {
 
     This function is not binary safe.
 */
-string scat(const char* s1, const char* s2) {
+string scatc(const char* s1, const char* s2) {
     if (s1 == NULL || s2 == NULL) return NULL;
     size_t len1 = strlen(s1);
     size_t len2 = strlen(s2);
@@ -405,6 +435,35 @@ string scats(const string s1, const string s2) {
     memcpy(s + len1, s2, len2);
     s[len1 + len2] = 0;
     return s;
+}
+
+/*
+    Append a C string to a given string.
+
+    Return NULL if s is NULL.
+    Return NULL and free s if cstr is NULL or has a length of 0.
+    Return NULL and free s if malloc/realloc fails.
+
+    Behaviour is undefined if cstr_len != len(cstr).
+*/
+string scat(string s, size_t cstr_len, char* cstr) {
+    if (!s)
+        return NULL;
+    if (!cstr) {
+        sfree(s);
+        return NULL;
+    }
+    size_t oldlen = sgetlen(s);
+    size_t newlen = oldlen + cstr_len;
+    string new = smakeroom(s, cstr_len);
+    if (!new) {
+        sfree(s);
+        return NULL;
+    }
+    memcpy(new + oldlen, cstr, cstr_len);
+    ssetlen(new, newlen);
+    new[newlen] = 0;
+    return new;
 }
 
 /*
@@ -738,6 +797,14 @@ size_t scount_private(const string s, size_t plen, const char* pattern) {
     return count;
 }
 
+/*
+    Split a string using the given separator into an array of n substrings.
+
+    Return NULL if s, sep or n is NULL.
+    Return NULL if seplen > len(s) or seplen is 0.
+    Return NULL if the input causes size_t overflow.
+    Return NULL if any allocation fails.
+*/
 string* ssplit(const string s, size_t seplen, const char* sep, size_t* n) {
     if (!s || !sep || !n)
         return NULL;
@@ -776,6 +843,9 @@ cleanup:
     }
 }
 
+/*
+    Free an array created by ssplit.
+*/
 void sfreearr(string* arr, size_t n) {
     if (!arr) return;
     for (size_t i = 0; i < n; i++)
@@ -814,6 +884,9 @@ bool sltrimchar(string s, size_t c_size, char* c_arr) {
     return true;
 }
 
+/*
+    Create a new string where old pattern is replaced with a new one.
+*/
 string sreplace(const string s, size_t olen, const char* old, size_t nlen, const char* new) {
     size_t n;
     string* split = ssplit(s, olen, old, &n);
@@ -822,5 +895,3 @@ string sreplace(const string s, size_t olen, const char* old, size_t nlen, const
     sfreearr(split, n);
     return res;
 }
-
-#endif

@@ -24,6 +24,7 @@
 #include "logger/logger.c"
 #include "helpers/helpers.c"
 #include "helpers/safe_string.h"
+#include "helpers/template.c"
 #include "htable/htable.c"
 
 /* Definitions */
@@ -245,38 +246,53 @@ void parse_request(struct Request* request, ht_htable* headers, string buffer)
         SET_STATUS(request, BAD_REQUEST, "Malicious payload\n");
 }
 
-void send_simple_response(int c, size_t code, char* msg,
-                          char* content_type, char* connection, char* body)
+ssize_t send_simple_response(int c, size_t code, char* msg,
+                          char* content_type, char* connection, char* body, bool is_chunked)
 {
-    char buf[SIMPLE_RESPONSE_SIZE];
-    snprintf(buf, SIMPLE_RESPONSE_SIZE,
-    "HTTP/1.1 %zu %s\r\n"
-    "Server: httpd\r\n"
-    "Content-type: %s\r\n"
-    "Content-Length: %zu\r\n"
-    "Connection: %s\r\n"
-    "\r\n"
-    "%s",
-    code, msg, content_type, strlen(body), connection, body);
-    write(c, buf, strlen(buf));
+    char code_str[100];
+    snprintf(code_str, sizeof(code_str), "%zu ", code);
+
+    string buffer = snewlen(NULL, SIMPLE_RESPONSE_SIZE);
+    supdatelen(buffer, 0);
+
+    buffer = scat(buffer, 9, "HTTP/1.1 ");
+    buffer = scat(buffer, strlen(code_str), code_str);
+    buffer = scat(buffer, strlen(msg), msg);
+
+    buffer = scat(buffer, 15, "\r\nServer: httpd");
+
+    buffer = scat(buffer, 16, "\r\nContent-type: ");
+    buffer = scat(buffer, strlen(content_type), content_type);
+
+    if (!is_chunked)
+    {
+        buffer = scat(buffer, 18, "\r\nContent-Length: ");
+        snprintf(code_str, sizeof(code_str), "%zu", strlen(body));
+        buffer = scat(buffer, strlen(code_str), code_str);
+    }
+    else
+        buffer = scat(buffer, 28, "\r\nTransfer-Encoding: chunked");
+
+    buffer = scat(buffer, 14, "\r\nConnection: ");
+    buffer = scat(buffer, strlen(connection), connection);
+
+    buffer = scat(buffer, 4, "\r\n\r\n");
+    if (!is_chunked)
+        buffer = scat(buffer, strlen(body), body);
+
+    ssize_t ret = write(c, buffer, sgetlen(buffer));
+    sfree(buffer);
+    return ret;
 }
 
 void send_file(int c, struct Request* request)
 {
-    char buf[CHUNK_SIZE];
     char chunk_header[8];
+    char buf[CHUNK_SIZE];
     size_t bytes_read;
     string file_name = request->uri;
 
-    snprintf(buf, CHUNK_SIZE,
-    "HTTP/1.1 200 OK\r\n"
-    "Server: httpd\r\n"
-    "Content-type: %s\r\n"
-    "Transfer-Encoding: chunked\r\n"
-    "Connection: keep-alive\r\n"
-    "\r\n", getconttype(getext(file_name)));
-
-    if (write(c, buf, strlen(buf)) < 0) {
+    if (send_simple_response(c, 200, "OK", getconttype(getext(file_name)), "keep-alive", "", 1) < 0) {
         SET_STATUS(request, INTERNAL_SERVER_ERROR, "Error sending headers\n");
         return;
     }
@@ -299,9 +315,11 @@ void send_file(int c, struct Request* request)
         if (write(c, "\r\n", 2) < 0)
             goto cleanup;
     }
-    fclose(file);
+
     if (write(c, "0\r\n\r\n", 5) < 0)
         SET_STATUS(request, INTERNAL_SERVER_ERROR, "Error writing the final chunk\n");
+
+    fclose(file);
     return;
 
 cleanup:
@@ -311,59 +329,43 @@ cleanup:
 
 void send_template(int c, struct Request* request)
 {
+    size_t bytes_read;
+    char buffer[CHUNK_SIZE];
+    char chunk_header[8];
+
+    // refactor reading a file into a separate function
     FILE* file = fopen("static/template.html", "rb");
     if (!file) {
         SET_STATUS(request, INTERNAL_SERVER_ERROR, "Can't open template file\n");
         return;
     }
-    
-    size_t bytes_read;
-    char buffer[CHUNK_SIZE];
-    char chunk_header[8];
+
     string template = snew("");
     while ((bytes_read = fread(buffer, 1, CHUNK_SIZE, file)) > 0)
     {
-        string buf = snewlen(buffer, bytes_read);
-        string tmp = template;
-        template = scats(template, buf);
-        sfree(buf); sfree(tmp);
+        template = scat(template, bytes_read, buffer);
     }
-    
+
+    string with_title = add_title(template, request->uri);
+    sfree(template);
+
     size_t n;
-    string listing = snew("Listing of /");
-    string title = scats(listing, request->uri);
-    string with_title = sreplace(template, 6, "#TITLE", sgetlen(title), title);
-    sfree(listing); sfree(title);
-
-    string li = snew("<li><a href=\"/PATH\">PATH</a></li>\n");
     string* dir_file = listdir(request->uri, &n);
-    string slash = snew("/");
+    string links = add_links(request->uri, n, dir_file);
+    sfreearr(dir_file, n);
 
-    string links = snew("");
-    for (size_t i = 0; i < n; i++) {
-        string first_link = scats(request->uri, slash);
-        string full_link = scats(first_link, dir_file[i]);
-        string new_full_path = sreplace(li, 5, "/PATH", sgetlen(full_link), full_link);
-        string link = sreplace(new_full_path, 4, "PATH", sgetlen(dir_file[i]), dir_file[i]);
-        string tmp = links;
-        links = scats(links, link);
-        sfree(first_link); sfree(full_link); sfree(new_full_path); sfree(link); sfree(tmp);
-    }
     string to_return = sreplace(with_title, 8, "#LISTING", sgetlen(links), links);
-    sfree(li); sfree(slash); sfreearr(dir_file, n); sfree(links); sfree(with_title);
+    sfree(links); sfree(with_title);
     
-    snprintf(buffer, CHUNK_SIZE,
-    "HTTP/1.1 200 OK\r\n"
-    "Server: httpd\r\n"
-    "Content-type: text/html\r\n"
-    "Transfer-Encoding: chunked\r\n"
-    "Connection: keep-alive\r\n"
-    "\r\n");
-    write(c, buffer, strlen(buffer));
+    if (send_simple_response(c, 200, "OK", "text/html", "keep-alive", "", 1) < 0) {
+        SET_STATUS(request, INTERNAL_SERVER_ERROR, "Error sending headers\n");
+        return;
+    }
+
     size_t len = sgetlen(to_return);
     n = 0;
     while (n < len)
-    {
+    { // add error handling and actually refactor this into a function
         bytes_read = len - n >= CHUNK_SIZE ? CHUNK_SIZE : len;
         snprintf(chunk_header, sizeof(chunk_header), "%zx\r\n", bytes_read);
         write(c, chunk_header, strlen(chunk_header));
@@ -372,6 +374,7 @@ void send_template(int c, struct Request* request)
         n += len;
     }
     write(c, "0\r\n\r\n", 5);
+    sfree(to_return);
 }
 
 void check_uri(struct Request* request)
@@ -393,7 +396,7 @@ bool respond(int c, struct Request* request)
     check_uri(request);
 
     if (!request->valid)
-        send_simple_response(c, request->status_code, "", "text/plain", "close", "");
+        send_simple_response(c, request->status_code, "", "text/plain", "close", "", false);
     else {
         if (isdir(request->uri))
             send_template(c, request);
@@ -403,12 +406,20 @@ bool respond(int c, struct Request* request)
     return request->valid;
 }
 
+void free_request(struct Request* request)
+{
+    sfree(request->method);
+    sfree(request->uri);
+    sfree(request->version);
+}
+
 void handle_client(const int c) 
 {
     struct Request request;
     ht_htable* headers = ht_new();
     string buffer = snewlen(NULL, MAX_REQUEST_SIZE);
-    // Maybe add a check that allocation was successful.
+    if (!headers || !buffer)
+        return;
 
     bool keep_alive = true;
     while (keep_alive) 
@@ -424,7 +435,7 @@ void handle_client(const int c)
         log_err(stderr, error_desc);
         if (request.status_code != NOTHING_TO_READ) {
             ht_clear(headers);
-            sfree(request.method); sfree(request.uri); sfree(request.version);
+            free_request(&request);
         }
     }
 
