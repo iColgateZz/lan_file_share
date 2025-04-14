@@ -13,22 +13,23 @@ string add_title(string template, string uri) {
 string add_links(string uri, size_t n, string* dir_file) {
     string li = snew("<li><a href=\"/PATH\">PATH</a></li>\n");
 
-    string first_link = sdup(uri);
-    // first_link = scat(first_link, 1, "/");
+    string first_link = snew("/");
+    first_link = scat(first_link, sgetlen(uri), uri);
+    if (sgetlen(first_link) != 1) {
+        first_link = scat(first_link, 1, "/");
+    }
 
     string links = snew("");
     for (size_t i = 0; i < n; i++) {
-        // string full_link = scats(first_link, dir_file[i]);
+        string full_link = scats(first_link, dir_file[i]);
 
-        // string new_full_path = sreplace(li, 5, "/PATH", sgetlen(first_link), first_link);
-        string link = sreplace(li, 4, "PATH", sgetlen(dir_file[i]), dir_file[i]);
+        string new_full_path = sreplace(li, 5, "/PATH", sgetlen(full_link), full_link);
+        string link = sreplace(new_full_path, 4, "PATH", sgetlen(dir_file[i]), dir_file[i]);
 
         string tmp = links;
         links = scats(links, link);
 
-        // sfree(full_link);
-        // sfree(new_full_path); 
-        sfree(link); sfree(tmp);
+        sfree(full_link); sfree(new_full_path); sfree(link); sfree(tmp);
     }
     sfree(li);
     return links;

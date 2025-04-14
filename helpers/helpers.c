@@ -60,7 +60,7 @@ string normalize_uri(string uri)
     }
     string new_uri = sjoins(out_size, out, 1, "/");
     sfreearr(in, n); free(out); sfree(uri);
-    sltrimchar(new_uri, 1, "/");
+    strim(new_uri, 1, "/");
     return new_uri;
 }
 
