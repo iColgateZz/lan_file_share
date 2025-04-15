@@ -111,7 +111,8 @@ char* getconttype(const char* ext)
         return "text/plain";
     } else if (strcmp(ext, ".pdf") == 0) {
         return "application/pdf";
-    } else if (strcmp(ext, ".c") == 0) {
+    } else if (strcmp(ext, ".c") == 0 || strcmp(ext, ".py") == 0 || 
+               strcmp(ext, ".sh") == 0 || strcmp(ext, ".h") == 0) {
         return "text/plain";
     }
     return "application/octet-stream";
