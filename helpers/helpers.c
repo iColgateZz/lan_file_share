@@ -78,7 +78,10 @@ int isdir(const char *path)
 {
     char buf[MAX_PATH_LEN];
     buf[MAX_PATH_LEN - 1] = 0;
-    snprintf(buf, MAX_PATH_LEN - 1, "./%s", path);
+    if (*path == 0)
+        snprintf(buf, MAX_PATH_LEN - 1, "./");
+    else
+        snprintf(buf, MAX_PATH_LEN - 1, "%s", path);
 
     struct stat statbuf;
     if (stat(buf, &statbuf) != 0)

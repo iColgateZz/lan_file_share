@@ -38,8 +38,6 @@
 #define SIMPLE_RESPONSE_SIZE    256
 #define PATH_TO_TEMPLATE_DIR    "static" // make sure it does not end with '/'
 #define TEMPLATE_FILE_NAME      "template.html"
-#define LOG_INFO_PATH           "info.log"
-#define LOG_ERR_PATH           "err.log"
 
 #define OK                      200
 #define BAD_REQUEST             400
@@ -397,6 +395,7 @@ void check_uri(struct Request* request)
     {
         string tmp = sreplace(request->uri, 20, "PATH_TO_TEMPLATE_DIR",
                                 strlen(PATH_TO_TEMPLATE_DIR), PATH_TO_TEMPLATE_DIR);
+
         if (isdir(tmp) == ISDIR_INVALID)
             SET_STATUS(request, NOT_FOUND, "Resource not found\n");
         sfree(tmp);
@@ -487,11 +486,13 @@ int main(int argc, char* argv[])
     char client_ip[INET_ADDRSTRLEN];
 
     if (argc < 3) {
-        log_err(stderr, "Usage: %s <ip> <port>\n"
+        fprintf(stderr, "Usage: %s <ip> <port>\n"
                         "where <ip> can be one of the following: \n"
                         " - 'localhost' sets the listen address to 127.0.0.1\n"
                         " - 'npa' which stands for no particular address, sets the listen address to 0.0.0.0\n"
-                        " - some other address chosen by the user\n", argv[0]);
+                        " - some other address chosen by the user\n"
+                        "and <port> is chosen by the user\n"
+                        "E.g. %s localhost 8080\n", argv[0], argv[0]);
         return -1;
     }
 
