@@ -11,9 +11,10 @@
 #include <stdlib.h>
 #include <dirent.h>
 
-#define MAX_PATH_LEN 8000
-#define MAX_DIR_SIZE 1024
-#define ISDIR_INVALID -1
+#define MAX_PATH_LEN            8000
+#define MAX_DIR_SIZE            1024
+#define CHUNK_SIZE              65536
+#define ISDIR_INVALID           -1
 
 string normalize_uri(string uri)
 {
@@ -148,6 +149,47 @@ cleanup:
         sfree(arr[i]);
     free(arr);
     return NULL;
+}
+
+string read_file(const char* file_name)
+{
+    size_t bytes_read;
+    string buf = snewlen(NULL, CHUNK_SIZE);
+    if (!buf) return NULL;
+
+    FILE* file = fopen(file_name, "rb");
+    if (!file) return NULL;
+
+    string ret = snewlen("", 0);
+    while ((bytes_read = fread(buf, 1, CHUNK_SIZE, file)) > 0)
+        ret = scat(ret, bytes_read, buf);
+
+    sfree(buf);
+    fclose(file);
+    return ret;
+}
+
+bool send_chunked_file(int c, string buf)
+{
+    size_t bytes_read;
+    char chunk_header[20];
+    size_t len = sgetlen(buf);
+    size_t n = 0;
+    while (n < len)
+    {
+        bytes_read = len - n >= CHUNK_SIZE ? CHUNK_SIZE : len - n;
+        snprintf(chunk_header, sizeof(chunk_header), "%zx\r\n", bytes_read);
+        if (write(c, chunk_header, strlen(chunk_header)) < 0)
+            return false;
+        if (write(c, buf + n, bytes_read) < 0)
+            return false;
+        if (write(c, "\r\n", 2) < 0)
+            return false;
+        n += bytes_read;
+    }
+    if (write(c, "0\r\n\r\n", 5) < 0)
+        return false;
+    return true;
 }
 
 #endif
