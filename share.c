@@ -38,6 +38,8 @@
 #define SIMPLE_RESPONSE_SIZE    256
 #define PATH_TO_TEMPLATE_DIR    "static" // make sure it does not end with '/'
 #define TEMPLATE_FILE_NAME      "template.html"
+#define LOG_INFO_PATH           "info.log"
+#define LOG_ERR_PATH           "err.log"
 
 #define OK                      200
 #define BAD_REQUEST             400
@@ -100,7 +102,7 @@ int init_server(const char* ip, const int port)
         error_desc = "listen() error";
         return 0;
     }
-    log_info("Listening on %s:%d\n\n-----------------------------\n\n", ip, port);
+    log_info("Listening on %s:%d\n\n----------------------------------------\n\n", ip, port);
 
     return s;
 }
@@ -455,13 +457,15 @@ void handle_client(const int c)
 
         read_request(c, &request, buffer);
         parse_request(&request, headers, buffer);
+        if (request.valid)
+            log_info("%s %s\n", request.method, request.uri);
         /*
             A connection is closed if the server treats a request as invalid,
             a client sends a 'Connection: close' header field or an internal
             server error occurs.
          */
         keep_alive = respond(c, &request, headers);
-        if (!request.valid)
+        if (!request.valid && strncmp(error_desc, "Nothing to read", 15))
             log_err(stderr, error_desc);
         if (request.status_code != NOTHING_TO_READ) {
             ht_clear(headers);
@@ -513,23 +517,20 @@ int main(int argc, char* argv[])
     {
         c = accept_client(s, client_ip);
         if (!c) {
-            log_warn("%s: %d\n", error_desc, errno);
+            log_err(stderr, "%s: %d\n", error_desc, errno);
             continue;
         }
 
         /* If > 2000 calls then fork EAGAIN error (35). */
         f = fork();
         if (f == 0) {
-            log_success("Client connected: %s\n", client_ip);
             handle_client(c);
-            log_success("Client disconnected: %s\n", client_ip);
-
             close(c);
             close(s);
             exit(0);
         } 
         else if (f == -1) 
-            log_warn("Fork() error: %d\n", errno);
+            log_err(stderr, "Fork() error: %d\n", errno);
         close(c);
     }
 

@@ -21,6 +21,9 @@ string add_links(string uri, size_t n, string* dir_file) {
 
     string links = snew("");
     for (size_t i = 0; i < n; i++) {
+        if (!strncmp(dir_file[i], ".\0", 2))
+            continue;
+        
         string full_link = scats(first_link, dir_file[i]);
 
         string new_full_path = sreplace(li, 5, "/PATH", sgetlen(full_link), full_link);
