@@ -28,7 +28,8 @@
 #include "htable/htable.c"
 
 /* Definitions */
-#define LISTENADDR              "0.0.0.0"
+#define LOCALHOST              "127.0.0.1"
+#define NPA                    "0.0.0.0"
 #define METHOD_SIZE             8
 #define URI_SIZE                8000
 #define VERSION_SIZE            9
@@ -67,13 +68,12 @@ struct Request
 /* Global state */
 char* error_desc;
 
-int init_server(const int port)
+int init_server(const char* ip, const int port)
 {
     int s;
     struct sockaddr_in srv;
 
     log_info("Initializing the server\n");
-    log_info("Opening a socket\n");
     s = socket(AF_INET, SOCK_STREAM, 0);
     if (s < 0) {
         error_desc = "socket() error";
@@ -82,9 +82,9 @@ int init_server(const int port)
 
     srv.sin_family = AF_INET;
     srv.sin_port = htons(port);
-    srv.sin_addr.s_addr = inet_addr(LISTENADDR);
+    srv.sin_addr.s_addr = inet_addr(ip);
 
-    log_info("Binding to port %d\n", port);
+    log_info("Binding to %s:%d\n", ip, port);
     if (bind(s, (struct sockaddr*) &srv, sizeof(srv))) {
         close(s);
         error_desc = "bind() error";
@@ -96,7 +96,7 @@ int init_server(const int port)
         error_desc = "listen() error";
         return 0;
     }
-    log_info("Listening on %s:%d\n\n-----------------------------\n\n", LISTENADDR, port);
+    log_info("Listening on %s:%d\n\n-----------------------------\n\n", ip, port);
 
     return s;
 }
@@ -285,67 +285,73 @@ ssize_t send_simple_response(int c, size_t code, char* msg,
     return ret;
 }
 
+string read_file(const char* file_name)
+{
+    size_t bytes_read;
+    string buf = snewlen(NULL, CHUNK_SIZE);
+    if (!buf) return NULL;
+
+    FILE* file = fopen(file_name, "rb");
+    if (!file) return NULL;
+
+    string ret = snewlen("", 0);
+    while ((bytes_read = fread(buf, 1, CHUNK_SIZE, file)) > 0)
+        ret = scat(ret, bytes_read, buf);
+
+    sfree(buf);
+    fclose(file);
+    return ret;
+}
+
+bool send_chunked_file(int c, string buf)
+{
+    size_t bytes_read;
+    char chunk_header[20];
+    size_t len = sgetlen(buf);
+    size_t n = 0;
+    while (n < len)
+    {
+        bytes_read = len - n >= CHUNK_SIZE ? CHUNK_SIZE : len - n;
+        snprintf(chunk_header, sizeof(chunk_header), "%zx\r\n", bytes_read);
+        if (write(c, chunk_header, strlen(chunk_header)) < 0)
+            return false;
+        if (write(c, buf + n, bytes_read) < 0)
+            return false;
+        if (write(c, "\r\n", 2) < 0)
+            return false;
+        n += bytes_read;
+    }
+    if (write(c, "0\r\n\r\n", 5) < 0)
+        return false;
+    return true;
+}
+
 void send_file(int c, struct Request* request)
 {
-    char chunk_header[8];
-    char buf[CHUNK_SIZE];
-    size_t bytes_read;
     string file_name = request->uri;
-
     if (send_simple_response(c, 200, "OK", getconttype(getext(file_name)), "keep-alive", "", 1) < 0) {
         SET_STATUS(request, INTERNAL_SERVER_ERROR, "Error sending headers\n");
         return;
     }
 
-    FILE *file = fopen(file_name, "rb");
+    string file = read_file(file_name);
     if (!file) {
-        SET_STATUS(request, INTERNAL_SERVER_ERROR, "Can't open file\n");
+        SET_STATUS(request, INTERNAL_SERVER_ERROR, "Error reading file\n");
         return;
     }
 
-    while ((bytes_read = fread(buf, 1, CHUNK_SIZE, file)) > 0)
-    {
-        snprintf(chunk_header, sizeof(chunk_header), "%zx\r\n", bytes_read);
-        if (write(c, chunk_header, strlen(chunk_header)) < 0)
-            goto cleanup;
-
-        if (write(c, buf, bytes_read) < 0)
-            goto cleanup;
-
-        if (write(c, "\r\n", 2) < 0)
-            goto cleanup;
-    }
-
-    if (write(c, "0\r\n\r\n", 5) < 0)
-        SET_STATUS(request, INTERNAL_SERVER_ERROR, "Error writing the final chunk\n");
-
-    fclose(file);
-    return;
-
-cleanup:
-    SET_STATUS(request, INTERNAL_SERVER_ERROR, "Error writing chunk data\n");
-    fclose(file);
+    if (!send_chunked_file(c, file))
+        SET_STATUS(request, INTERNAL_SERVER_ERROR, "Error sending chunked data\n");
+    sfree(file);
 }
 
 void send_template(int c, struct Request* request)
 {
-    size_t bytes_read;
-    char buffer[CHUNK_SIZE];
-    char chunk_header[8];
-
-    // refactor reading a file into a separate function
-    FILE* file = fopen("static/template.html", "rb");
-    if (!file) {
-        SET_STATUS(request, INTERNAL_SERVER_ERROR, "Can't open template file\n");
+    string template = read_file("static/template.html");
+    if (!template) {
+        SET_STATUS(request, INTERNAL_SERVER_ERROR, "Error reading template\n");
         return;
     }
-
-    string template = snew("");
-    while ((bytes_read = fread(buffer, 1, CHUNK_SIZE, file)) > 0)
-    {
-        template = scat(template, bytes_read, buffer);
-    }
-
     string with_title = add_title(template, request->uri);
     sfree(template);
 
@@ -359,21 +365,12 @@ void send_template(int c, struct Request* request)
     
     if (send_simple_response(c, 200, "OK", "text/html", "keep-alive", "", 1) < 0) {
         SET_STATUS(request, INTERNAL_SERVER_ERROR, "Error sending headers\n");
+        sfree(to_return);
         return;
     }
 
-    size_t len = sgetlen(to_return);
-    n = 0;
-    while (n < len)
-    { // add error handling and actually refactor this into a function
-        bytes_read = len - n >= CHUNK_SIZE ? CHUNK_SIZE : len;
-        snprintf(chunk_header, sizeof(chunk_header), "%zx\r\n", bytes_read);
-        write(c, chunk_header, strlen(chunk_header));
-        write(c, to_return + n, bytes_read);
-        write(c, "\r\n", 2);
-        n += len;
-    }
-    write(c, "0\r\n\r\n", 5);
+    if (!send_chunked_file(c, to_return))
+        SET_STATUS(request, INTERNAL_SERVER_ERROR, "Error sending chunked data\n");
     sfree(to_return);
 }
 
@@ -397,7 +394,8 @@ bool respond(int c, struct Request* request)
 
     if (!request->valid)
         send_simple_response(c, request->status_code, "", "text/plain", "close", "", false);
-    else {
+    else 
+    {
         if (isdir(request->uri))
             send_template(c, request);
         else
@@ -417,9 +415,13 @@ void handle_client(const int c)
 {
     struct Request request;
     ht_htable* headers = ht_new();
+    if (!headers) return;
+
     string buffer = snewlen(NULL, MAX_REQUEST_SIZE);
-    if (!headers || !buffer)
+    if (!buffer) {
+        ht_del_htable(headers);
         return;
+    }
 
     bool keep_alive = true;
     while (keep_alive) 
@@ -429,8 +431,6 @@ void handle_client(const int c)
 
         read_request(c, &request, buffer);
         parse_request(&request, headers, buffer);
-        printf("Request vals:\nMethod: %s\nUri: %s\nVersion: %s\nCode: %zu\n\n", 
-                request.method, request.uri, request.version, request.status_code);
         keep_alive = respond(c, &request);
         log_err(stderr, error_desc);
         if (request.status_code != NOTHING_TO_READ) {
@@ -448,16 +448,27 @@ void handle_client(const int c)
 int main(int argc, char* argv[]) 
 {
     int s, c, f;
+    char* ip;
     char* port;
     char client_ip[INET_ADDRSTRLEN];
 
-    if (argc < 2) {
-        log_err(stderr, "Usage: %s <port>\n", argv[0]);
+    if (argc < 3) {
+        log_err(stderr, "Usage: %s <ip> <port>\n"
+                        "where <ip> can be one of the following: \n"
+                        " - 'localhost' sets the listen address to 127.0.0.1\n"
+                        " - 'npa' which stands for no particular address, sets the listen address to 0.0.0.0\n"
+                        " - some other address chosen by the user\n", argv[0]);
         return -1;
     }
 
-    port = argv[1];
-    s = init_server(atoi(port));
+    ip = argv[1];
+    if (!strncmp(ip, "localhost", 9))
+        ip = LOCALHOST;
+    else if (!strncmp(ip, "npa", 3))
+        ip = NPA;
+
+    port = argv[2];
+    s = init_server(ip, atoi(port));
     if (!s) {
         log_err(stderr, "%s: %d\n", error_desc, errno);
         return -1;
