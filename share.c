@@ -89,7 +89,7 @@ int init_server(const char* ip, const int port)
     log_info("Binding to %s:%d\n", ip, port);
     if (bind(s, (struct sockaddr*) &srv, sizeof(srv))) {
         close(s);
-        error_desc = "bind() error";
+        error_desc = "bind() error\nChoose another port";
         return 0;
     }
 
@@ -505,7 +505,7 @@ int main(int argc, char* argv[])
     port = argv[2];
     s = init_server(ip, atoi(port));
     if (!s) {
-        log_err(stderr, "%s: %d\n", error_desc, errno);
+        log_err(stderr, "%s\n", error_desc);
         return -1;
     }
 
