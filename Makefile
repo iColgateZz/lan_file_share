@@ -1,4 +1,4 @@
-CFLAGS=-O2 -Wall -Wextra -pedantic
+CFLAGS=-O2 -Wall -Wextra -pedantic -lm
 
 rule: clean first
 

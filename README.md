@@ -4,6 +4,8 @@ Share files with everyone on the local area network!
 Spawn an HTTP server in a directory and let everyone access its contents via a browser!  
 Customize the UI by modifying the frontend code!
 
+Basically, this is an extended version of `python3 -m http.server`.
+
 ## Compilation
 
 Run `make` on *nix machines. This command produces the `share` executable file that can be launched.
