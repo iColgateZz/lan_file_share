@@ -22,6 +22,6 @@ Others can access the files by navigating to `http://<ip>:<port>`.
 
 ## Customization
 
-The `static` directory also contains a `.js` and a `.css` file. While they do not significantly enhance the UI, they serve as examples of how to add more files and import them into the HTML template to improve the frontend.
-
 Let's take a closer look at the `static/template.html` file. There are some special placeholders there. `#TITLE` will be replaced with `LISTING of {path}`, and `#LISTING` will be replaced with the links to different files and directories. `PATH_TO_TEMPLATE_DIR` is a special value used to hide the full path to the `static` directory, which may contain sensitive information that you might not want to share.
+
+The `static` directory also contains a `.js` and a `.css` file. While they do not significantly enhance the UI, they serve as examples of how to add more files and import them into the HTML template to improve the frontend.
