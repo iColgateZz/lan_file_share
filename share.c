@@ -244,10 +244,10 @@ void check_headers(struct Request* request, ht_htable* headers)
     }
 
     /* Connection header must be present. */
-    if (!ht_search(headers, "connection")) {
-        SET_STATUS(request, BAD_REQUEST, "Connection is not specified\n");
-        return;
-    }
+    // if (!ht_search(headers, "connection")) {
+    //     SET_STATUS(request, BAD_REQUEST, "Connection is not specified\n");
+    //     return;
+    // }
 }
 
 void parse_request(struct Request* request, ht_htable* headers, string buffer)
